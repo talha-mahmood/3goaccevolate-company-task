@@ -1,29 +1,37 @@
 from typing import List
 import asyncio
 import logging
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
+import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote
 import time
+import random
+import re
 
 from scrapers.base import BaseScraper
 from models.job import Job
 from models.request import JobSearchRequest
 
 class GlassdoorScraper(BaseScraper):
-    """Glassdoor job scraper implementation"""
+    """Glassdoor job scraper implementation using requests instead of Selenium to avoid Windows errors"""
     
     def __init__(self):
         super().__init__()
         self.name = "Glassdoor"
-        self.base_url = "https://www.glassdoor.com/Job/jobs.htm?sc.keyword="
+        self.base_url = "https://www.glassdoor.com/Job/jobs.htm"
+        self.headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "sec-ch-ua": '"Chromium";v="106", "Google Chrome";v="106", "Not;A=Brand";v="99"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Referer": "https://www.google.com/",
+        }
     
     async def scrape(self, job_request: JobSearchRequest) -> List[Job]:
         """
@@ -41,176 +49,165 @@ class GlassdoorScraper(BaseScraper):
         return await asyncio.to_thread(self._scrape_glassdoor, job_request)
     
     def _scrape_glassdoor(self, job_request: JobSearchRequest) -> List[Job]:
-        """Internal method to handle the actual scraping with Selenium"""
-        
-        # Setup Chrome options
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1920,1080")
+        """Internal method to handle the actual scraping with requests"""
         
         # Format the search query
-        query = self.format_search_query(job_request)
-        encoded_query = quote(query)
+        query = quote(job_request.position)
         
-        # Construct the URL - Glassdoor needs special handling for location
-        location_param = ""
-        if job_request.location:
-            # Extract just the city name
-            city = job_request.location.split(',')[0].strip()
-            location_param = f"&locT=C&locId=0&locKeyword={quote(city)}"
+        # Get location code (try to extract city name)
+        location = job_request.location.split(',')[0].strip() if job_request.location else ""
+        location_param = f"&sc.keyword={query}&locT=C&locId=0&locKeyword={quote(location)}"
         
-        url = f"{self.base_url}{encoded_query}{location_param}"
+        # Construct the URL
+        url = f"{self.base_url}?sc.keyword={query}{location_param}"
+        
+        logging.info(f"Glassdoor URL: {url}")
         
         jobs = []
         
         try:
-            # Initialize the webdriver
-            driver = webdriver.Chrome(
-                service=Service(ChromeDriverManager().install()),
-                options=chrome_options
-            )
+            # Make the request
+            response = requests.get(url, headers=self.headers, timeout=30)
+            response.raise_for_status()
             
-            # Set page load timeout
-            driver.set_page_load_timeout(30)
+            # Parse the content
+            soup = BeautifulSoup(response.text, "html.parser")
             
-            # Navigate to the Glassdoor jobs page
-            driver.get(url)
+            # Check for cookies/login modal and log it
+            if soup.select(".modal_closeIcon") or soup.select(".modal"):
+                logging.warning("Glassdoor has a modal that would need to be closed (login/cookies)")
             
-            # Handle login popup if it appears
-            try:
-                WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, ".modal_closeIcon"))
-                )
-                close_button = driver.find_element(By.CSS_SELECTOR, ".modal_closeIcon")
-                close_button.click()
-                time.sleep(1)
-            except (TimeoutException, NoSuchElementException):
-                pass  # No popup or couldn't find close button
+            # Find job listings - Glassdoor has several possible DOM structures
+            job_cards = soup.select(".JobsList_jobListItem__JBBUV") or \
+                       soup.select("[data-test='jobListing']") or \
+                       soup.select(".react-job-listing")
             
-            # Wait for job listings to load
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, ".JobsList_jobListItem__JBBUV"))
-            )
+            logging.info(f"Found {len(job_cards)} Glassdoor job cards")
             
-            # Get job listings
-            job_listings = driver.find_elements(By.CSS_SELECTOR, ".JobsList_jobListItem__JBBUV")
-            
-            # Process up to 15 job listings
-            for i, job_item in enumerate(job_listings[:15]):
+            # Process job listings
+            for job_card in job_cards[:15]:  # Limit to 15 results
                 try:
-                    # Click on the job to load its details
-                    job_item.click()
-                    time.sleep(2)  # Wait for job details to load
+                    # Extract job title
+                    job_title_element = job_card.select_one(".JobCard_jobTitle__RiMJv") or \
+                                      job_card.select_one("[data-test='job-title']") or \
+                                      job_card.select_one("a.jobLink")
                     
-                    # Get job details
-                    try:
-                        job_title_element = WebDriverWait(driver, 5).until(
-                            EC.presence_of_element_located((By.CSS_SELECTOR, ".JobDetails_jobTitle__Rw_gn"))
-                        )
-                        job_title = self.clean_text(job_title_element.text)
-                    except:
-                        job_title = "Unknown Title"
+                    job_title = self.clean_text(job_title_element.get_text()) if job_title_element else "Unknown Title"
                     
-                    try:
-                        company_element = driver.find_element(By.CSS_SELECTOR, ".EmployerProfile_employerName__Xemli")
-                        company = self.clean_text(company_element.text)
-                    except:
-                        company = "Unknown Company"
+                    # Extract job link
+                    job_link = None
+                    if job_title_element and job_title_element.name == "a" and job_title_element.has_attr("href"):
+                        job_link = job_title_element["href"]
+                        if job_link.startswith("/"):
+                            job_link = f"https://www.glassdoor.com{job_link}"
+                    else:
+                        # Try to find link elsewhere
+                        link_element = job_card.select_one("a.jobLink") or job_card.select_one("a[data-test='job-link']")
+                        if link_element and link_element.has_attr("href"):
+                            job_link = link_element["href"]
+                            if job_link.startswith("/"):
+                                job_link = f"https://www.glassdoor.com{job_link}"
                     
-                    try:
-                        location_element = driver.find_element(By.CSS_SELECTOR, ".JobDetails_location__MbnIM")
-                        location = self.clean_text(location_element.text)
-                    except:
-                        location = None
+                    # Extract company name
+                    company_element = job_card.select_one("[data-test='employerName']") or \
+                                    job_card.select_one(".EmployerProfile_employerName__Xemli") or \
+                                    job_card.select_one(".jobCard-company")
                     
-                    # Get salary if available
-                    try:
-                        salary_element = driver.find_element(By.CSS_SELECTOR, ".JobDetails_salaryEstimate__hqBuQ")
-                        salary = self.clean_text(salary_element.text)
-                    except:
-                        salary = None
+                    company = self.clean_text(company_element.get_text()) if company_element else "Unknown Company"
                     
-                    # Get job description
-                    try:
-                        description_element = driver.find_element(By.CSS_SELECTOR, ".JobDetails_jobDescription__6VeZx")
-                        description = self.clean_text(description_element.text)
-                    except:
-                        description = ""
+                    # Extract location
+                    location_element = job_card.select_one("[data-test='location']") or \
+                                     job_card.select_one(".JobDetails_location__MbnIM") or \
+                                     job_card.select_one(".location")
                     
-                    # Try to extract experience requirement from description
+                    location = self.clean_text(location_element.get_text()) if location_element else None
+                    
+                    # Extract salary if available
+                    salary_element = job_card.select_one("[data-test='detailSalary']") or \
+                                   job_card.select_one(".JobDetails_salaryEstimate__hqBuQ") or \
+                                   job_card.select_one(".salary-estimate")
+                    
+                    salary = self.clean_text(salary_element.get_text()) if salary_element else None
+                    
+                    # Extract job nature and description - will need to get the job detail page
+                    description = ""
+                    job_nature = None
                     experience = None
-                    if description:
-                        experience_indicators = [
-                            "years of experience", 
-                            "years experience",
-                            "yrs experience",
-                            "years' experience"
-                        ]
-                        
-                        for indicator in experience_indicators:
-                            if indicator in description.lower():
-                                # Extract sentence containing experience info
-                                sentences = description.split('.')
-                                for sentence in sentences:
-                                    if indicator in sentence.lower():
-                                        experience = sentence.strip()
+                    
+                    if job_link:
+                        try:
+                            # Add a small delay to avoid rate limiting
+                            time.sleep(random.uniform(1, 3))
+                            
+                            # Fetch job details page
+                            job_response = requests.get(job_link, headers=self.headers, timeout=30)
+                            if job_response.status_code == 200:
+                                job_soup = BeautifulSoup(job_response.text, "html.parser")
+                                
+                                # Extract job description
+                                description_element = job_soup.select_one(".JobDetails_jobDescription__6VeZx") or \
+                                                    job_soup.select_one("[data-test='jobDescriptionText']") or \
+                                                    job_soup.select_one(".desc")
+                                
+                                if description_element:
+                                    description = self.clean_text(description_element.get_text())
+                                
+                                # Look for job type
+                                job_info_elements = job_soup.select(".JobDetails_jobInfoItem__DJDHZ") or \
+                                                  job_soup.select("[data-test='job-info']") or \
+                                                  job_soup.select(".empInfo")
+                                
+                                for element in job_info_elements:
+                                    text = element.get_text().lower()
+                                    if any(job_type in text for job_type in ["full-time", "part-time", "contract", "remote", "onsite", "hybrid"]):
+                                        job_nature = self.clean_text(element.get_text())
                                         break
                                 
-                                if experience:
-                                    break
-                    
-                    # Get job nature
-                    job_nature = None
-                    job_nature_indicators = ["full-time", "part-time", "contract", "remote", "onsite", "hybrid"]
-                    
-                    try:
-                        job_info_elements = driver.find_elements(By.CSS_SELECTOR, ".JobDetails_jobInfoItem__DJDHZ")
-                        for element in job_info_elements:
-                            text = element.text.lower()
-                            if any(indicator in text for indicator in job_nature_indicators):
-                                job_nature = self.clean_text(element.text)
-                                break
-                    except:
-                        pass
-                    
-                    # Get apply link
-                    try:
-                        apply_button = driver.find_element(By.CSS_SELECTOR, "a[data-test='applyButton']")
-                        apply_link = apply_button.get_attribute("href")
-                    except:
-                        try:
-                            # Get the current URL as a fallback
-                            apply_link = driver.current_url
-                        except:
-                            apply_link = f"https://www.glassdoor.com/job-listing/{job_title.lower().replace(' ', '-')}"
+                                # Try to find job nature in description if not found above
+                                if not job_nature and description:
+                                    if "remote" in description.lower():
+                                        job_nature = "Remote"
+                                    elif "on-site" in description.lower() or "onsite" in description.lower():
+                                        job_nature = "Onsite"
+                                    elif "hybrid" in description.lower():
+                                        job_nature = "Hybrid"
+                                
+                                # Try to extract experience requirement from description
+                                if description:
+                                    exp_patterns = [
+                                        r'(\d+\+?\s*(?:years|yrs)(?:\s*of)?\s*experience)',
+                                        r'(\d+\s*-\s*\d+\s*(?:years|yrs)(?:\s*of)?\s*experience)'
+                                    ]
+                                    
+                                    for pattern in exp_patterns:
+                                        exp_match = re.search(pattern, description, re.IGNORECASE)
+                                        if exp_match:
+                                            experience = exp_match.group(1)
+                                            break
+                        
+                        except Exception as e:
+                            logging.error(f"Error fetching Glassdoor job details: {str(e)}")
                     
                     # Create job object
-                    job = Job(
-                        job_title=job_title,
-                        company=company,
-                        location=location,
-                        experience=experience,
-                        jobNature=job_nature,
-                        salary=salary,
-                        apply_link=apply_link,
-                        source="Glassdoor",
-                        description=description
-                    )
-                    
-                    jobs.append(job)
+                    if job_link:
+                        job = Job(
+                            job_title=job_title,
+                            company=company,
+                            location=location,
+                            experience=experience,
+                            jobNature=job_nature,
+                            salary=salary,
+                            apply_link=job_link,
+                            source="Glassdoor",
+                            description=description
+                        )
+                        
+                        jobs.append(job)
                 
                 except Exception as e:
                     logging.error(f"Error extracting Glassdoor job details: {str(e)}")
-                    continue
-                
+        
         except Exception as e:
             logging.error(f"Glassdoor scraping error: {str(e)}")
-        
-        finally:
-            if 'driver' in locals():
-                driver.quit()
         
         return jobs

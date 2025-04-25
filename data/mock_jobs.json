@@ -1,0 +1,98 @@
+{
+  "full_stack": [
+    {
+      "job_title": "Senior Full Stack Engineer",
+      "company": "TechSolutions Inc.",
+      "location": "Islamabad, Pakistan",
+      "experience": "3+ years",
+      "jobNature": "Remote",
+      "salary": "120,000 - 160,000 PKR",
+      "description": "We're seeking an experienced Full Stack Developer with strong MERN stack experience to join our team. You'll work on complex applications for our global clients."
+    },
+    {
+      "job_title": "Full Stack MERN Developer",
+      "company": "DigitalCraft Labs",
+      "location": "Lahore, Pakistan",
+      "experience": "2-3 years",
+      "jobNature": "Hybrid",
+      "salary": "90,000 - 130,000 PKR",
+      "description": "Join our team to build responsive web applications using React, Node.js, and MongoDB. Experience with state management libraries is a plus."
+    },
+    {
+      "job_title": "Full Stack JavaScript Developer",
+      "company": "WebFusion Technologies",
+      "location": "Karachi, Pakistan",
+      "experience": "2 years",
+      "jobNature": "Onsite",
+      "salary": "85,000 - 110,000 PKR",
+      "description": "Looking for a Full Stack Developer proficient in React.js, Node.js, and Express. Knowledge of TailwindCSS and Firebase is required."
+    },
+    {
+      "job_title": "Full Stack Engineer",
+      "company": "ByteWorks Software",
+      "location": "Peshawar, Pakistan",
+      "experience": "1-2 years",
+      "jobNature": "Onsite",
+      "salary": "70,000 - 95,000 PKR",
+      "description": "We need a Full Stack Developer to help build and maintain our web applications. Experience with Next.js, React, and Node.js is required."
+    },
+    {
+      "job_title": "MERN Stack Developer",
+      "company": "CodeNest Systems",
+      "location": "Islamabad, Pakistan",
+      "experience": "2+ years",
+      "jobNature": "Hybrid",
+      "salary": "80,000 - 120,000 PKR",
+      "description": "Join our team to work on exciting projects using MongoDB, Express, React, and Node.js. Experience with authentication and authorization is a plus."
+    },
+    {
+      "job_title": "Full Stack Web Developer",
+      "company": "InnovateTech",
+      "location": "Lahore, Pakistan",
+      "experience": "2-4 years",
+      "jobNature": "Remote",
+      "salary": "100,000 - 140,000 PKR",
+      "description": "We're looking for a Full Stack Developer with strong front-end and back-end skills to join our team. Experience with React, Node.js, and MongoDB is required."
+    },
+    {
+      "job_title": "JavaScript Full Stack Developer",
+      "company": "DevHarbor",
+      "location": "Karachi, Pakistan",
+      "experience": "3 years",
+      "jobNature": "Onsite",
+      "salary": "110,000 - 150,000 PKR",
+      "description": "Join our team to build scalable web applications using the latest JavaScript technologies. Experience with React, Node.js, and Express is required."
+    },
+    {
+      "job_title": "Full Stack React Developer",
+      "company": "PixelPulse Media",
+      "location": "Islamabad, Pakistan",
+      "experience": "2 years",
+      "jobNature": "Hybrid",
+      "salary": "85,000 - 115,000 PKR",
+      "description": "We're seeking a Full Stack Developer with strong React skills to join our team. Experience with Node.js, Express, and MongoDB is required."
+    }
+  ],
+  "frontend": [
+    {
+      "job_title": "Frontend React Developer",
+      "company": "TechSolutions Inc.",
+      "location": "Islamabad, Pakistan",
+      "experience": "2 years",
+      "jobNature": "Remote",
+      "salary": "90,000 - 120,000 PKR",
+      "description": "We're seeking a Frontend Developer with strong React skills to join our team. Experience with state management libraries is required."
+    }
+  ],
+  "backend": [
+    {
+      "job_title": "Backend Node.js Developer",
+      "company": "WebFusion Technologies",
+      "location": "Lahore, Pakistan",
+      "experience": "2+ years",
+      "jobNature": "Onsite",
+      "salary": "95,000 - 130,000 PKR",
+      "description": "Join our team to build scalable backend services using Node.js, Express, and MongoDB. Experience with authentication and authorization is required."
+    }
+  ]
+}

@@ -9,11 +9,14 @@ job_finder_api/
 ├── main.py               # FastAPI application entry point
 ├── requirements.txt      # Project dependencies
 ├── .env                  # Environment variables (not tracked in git)
+├── history.md            # Tracks changes and development progress
 ├── scrapers/
 │   ├── __init__.py
 │   ├── linkedin.py       # LinkedIn scraper
 │   ├── indeed.py         # Indeed scraper
 │   ├── glassdoor.py      # Glassdoor scraper
+│   ├── mock_scraper.py   # Mock scraper for testing
+│   ├── scraper_factory.py # Factory to manage scrapers
 │   └── base.py           # Base scraper class
 ├── utils/
 │   ├── __init__.py
@@ -31,9 +34,10 @@ job_finder_api/
 ## Implementation Details
 
 ### 1. Web Scraping Approach
-- **LinkedIn**: Using Selenium for dynamic content loading and BeautifulSoup for parsing.
-- **Indeed**: Using requests and BeautifulSoup as the content is more accessible.
-- **Glassdoor**: Using Selenium to navigate through job listings.
+- **LinkedIn**: Using requests and BeautifulSoup for parsing (switched from Selenium to avoid Windows compatibility issues).
+- **Indeed**: Using httpx and BeautifulSoup with rotating user agents to avoid blocking.
+- **Glassdoor**: Using requests with BeautifulSoup (switched from Selenium to avoid Windows compatibility issues).
+- **Mock Scraper**: Provides realistic test data when real scraping is not possible.
 
 Each scraper inherits from a base scraper class that defines common functionality.
 
