@@ -52,3 +52,13 @@
 - Improved error handling in LinkedIn scraper to process job cards more efficiently
 - Added more debug logging to track scraping progress
 - Increased timeout for LinkedIn scraper as it found job cards but couldn't process them in time
+
+## Improved Anti-Blocking for Indeed and Glassdoor (2025-04-26)
+- Enhanced Indeed scraper with more advanced anti-blocking techniques
+- Implemented rotating proxies support for Indeed and Glassdoor
+- Added support for bypassing CAPTCHA challenges
+- Improved HTTP headers to better mimic real browser behavior
+- Added request throttling and randomized delays between requests
+- Implemented alternative scraping approaches for Indeed
+- Added fallback to Indeed's mobile site which has simpler anti-bot measures
+- Enhanced logging to better diagnose scraping issues

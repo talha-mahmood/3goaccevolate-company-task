@@ -29,7 +29,6 @@ job_finder_api/
 └── tests/
     ├── __init__.py
     └── test_api.py       # API tests
-```
 
 ## Implementation Details
 
