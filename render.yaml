@@ -3,8 +3,18 @@ services:
   - type: web
     name: job-finder-api
     env: python
-    buildCommand: pip install -r requirements.txt
+    buildCommand: |
+      pip install -r requirements.txt
+      playwright install chromium --with-deps
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    # Add health check to ensure your application is running correctly
+    healthCheckPath: /health
+    # Auto-deploy changes from GitHub
+    autoDeploy: true
+    # Resource configuration for the free tier
+    plan: free
+    # Python version specification
+    runtime: python3.10
     envVars:
       - key: OPENAI_API_KEY
         sync: false
@@ -18,3 +28,9 @@ services:
         value: True
       - key: USE_RESIDENTIAL_PROXIES
         value: True
+      - key: LINKEDIN_TIMEOUT
+        value: 45
+      - key: INDEED_TIMEOUT
+        value: 30
+      - key: GLASSDOOR_TIMEOUT
+        value: 30
