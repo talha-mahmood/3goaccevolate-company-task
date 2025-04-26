@@ -6,7 +6,7 @@ httpx==0.24.1
 beautifulsoup4==4.12.2
 selenium==4.12.0
 webdriver-manager==4.0.0
-openai==0.28.0
+openai>=1.0.0  # Updated to use the latest version
 langchain==0.0.268
 requests==2.31.0
 lxml==4.9.3
@@ -19,3 +19,7 @@ aiohttp==3.8.5; platform_system!="Windows"
 aiohttp-binary==3.8.5; platform_system=="Windows"
 tenacity==8.2.3
 cachetools==5.3.1
+playwright>=1.35.0
+
+# Add gunicorn for production deployment
+gunicorn==20.1.0

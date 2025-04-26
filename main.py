@@ -120,40 +120,29 @@ async def search_jobs(job_request: JobSearchRequest, background_tasks: Backgroun
             logging.info(f"Returning cached results for {cache_key}")
             return {"relevant_jobs": app_state["job_cache"][cache_key]["jobs"]}
         
-        # Scrape jobs from different sources
-        tasks = []
-        for name, scraper in app_state["scrapers"].items():
-            # Use longer timeout for LinkedIn as it seems to be finding results but timing out
-            timeout = 45 if name == "LinkedIn" else 20
-            task = asyncio.create_task(scrape_with_timeout(scraper, job_request, name, timeout=timeout))
-            tasks.append(task)
+        # Set a strict overall timeout for the entire operation
+        overall_timeout = 30  # 30 seconds maximum for the entire operation
         
-        # Run scrapers in parallel with a overall timeout
+        # Create a task that will execute all the scraping
+        scraping_task = asyncio.create_task(_execute_job_search(job_request))
+        
         try:
-            job_results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=60)
+            # Wait for the scraping task with a timeout
+            all_jobs = await asyncio.wait_for(scraping_task, timeout=overall_timeout)
         except asyncio.TimeoutError:
-            logging.error("Overall scraping operation timed out")
-            job_results = [Exception("Timeout") for _ in tasks]
-        
-        # Handle potential exceptions and flatten the list of jobs
-        all_jobs = []
-        failed_sources = []
-        
-        for i, result in enumerate(job_results):
-            source_name = list(app_state["scrapers"].keys())[i]
-            if isinstance(result, Exception):
-                logging.error(f"Error in {source_name} scraper: {str(result)}")
-                failed_sources.append(source_name)
-            else:
-                if result:  # If we got jobs
-                    all_jobs.extend(result)
-                else:
-                    logging.warning(f"No jobs found from {source_name}")
-                    failed_sources.append(source_name)
+            logging.error(f"Overall job search operation timed out after {overall_timeout} seconds")
+            # Start the search in the background to cache results for next time
+            background_tasks.add_task(refresh_job_data, job_request, cache_key)
+            # Return empty results to avoid UI hanging
+            return {"relevant_jobs": []}
+        except Exception as e:
+            logging.error(f"Error in job search operation: {str(e)}")
+            # Return empty results on error
+            return {"relevant_jobs": []}
         
         logging.info(f"Found {len(all_jobs)} jobs from all sources")
         
-        # If all sources failed or returned no jobs, return empty results
+        # If no jobs were found, return empty results
         if not all_jobs:
             logging.warning("No jobs found from any source, returning empty results")
             # Schedule background task to try again
@@ -161,22 +150,8 @@ async def search_jobs(job_request: JobSearchRequest, background_tasks: Backgroun
             # Return empty results immediately
             return {"relevant_jobs": []}
         
-        # Filter jobs for relevance using LLM
-        if app_state["llm_processor"]:
-            try:
-                relevant_jobs = await asyncio.wait_for(
-                    app_state["llm_processor"].filter_jobs_by_relevance(all_jobs, job_request),
-                    timeout=15  # 15-second timeout for LLM
-                )
-            except asyncio.TimeoutError:
-                logging.error("LLM processing timed out")
-                # On timeout, just return top jobs without filtering
-                relevant_jobs = all_jobs[:15]
-        else:
-            # If LLM processor is not available, return jobs directly
-            relevant_jobs = all_jobs[:15]
-        
-        logging.info(f"Filtered to {len(relevant_jobs)} relevant jobs")
+        # Process with LLM with a shorter timeout
+        relevant_jobs = await _process_with_llm(all_jobs, job_request)
         
         # Cache the results
         app_state["job_cache"][cache_key] = {
@@ -190,6 +165,66 @@ async def search_jobs(job_request: JobSearchRequest, background_tasks: Backgroun
         logging.error(f"Error searching jobs: {str(e)}")
         # Return empty results on error
         return {"relevant_jobs": []}
+
+# Add this new helper function for executing job search
+async def _execute_job_search(job_request: JobSearchRequest) -> List[Job]:
+    """Execute job search across all sources with proper timeout handling"""
+    # Scrape jobs from different sources
+    tasks = []
+    
+    for name, scraper in app_state["scrapers"].items():
+        # Use timeouts from environment if available, otherwise use defaults
+        timeout = int(os.getenv(f"{name.upper()}_TIMEOUT", 20))
+        logging.info(f"Setting {name} scraper timeout to {timeout} seconds")
+        task = asyncio.create_task(scrape_with_timeout(scraper, job_request, name, timeout=timeout))
+        tasks.append(task)
+    
+    # Use a slightly longer timeout for the gather operation
+    try:
+        job_results = await asyncio.gather(*tasks, return_exceptions=True)
+    except Exception as e:
+        logging.error(f"Error gathering scraper results: {str(e)}")
+        job_results = [Exception(f"Gather error: {str(e)}") for _ in tasks]
+    
+    # Handle potential exceptions and flatten the list of jobs
+    all_jobs = []
+    
+    for i, result in enumerate(job_results):
+        source_name = list(app_state["scrapers"].keys())[i]
+        if isinstance(result, Exception):
+            logging.error(f"Error in {source_name} scraper: {str(result)}")
+        else:
+            if result:  # If we got jobs
+                logging.info(f"Found {len(result)} jobs from {source_name}")
+                all_jobs.extend(result)
+            else:
+                logging.warning(f"No jobs found from {source_name}")
+    
+    return all_jobs
+
+# Add this helper function for LLM processing
+async def _process_with_llm(jobs: List[Job], job_request: JobSearchRequest) -> List[Job]:
+    """Process jobs with LLM with timeout handling"""
+    # Filter jobs for relevance using LLM
+    if app_state["llm_processor"]:
+        try:
+            # Set a short timeout for LLM processing
+            relevant_jobs = await asyncio.wait_for(
+                app_state["llm_processor"].filter_jobs_by_relevance(jobs, job_request),
+                timeout=10  # 10-second timeout for LLM
+            )
+            return relevant_jobs
+        except asyncio.TimeoutError:
+            logging.error("LLM processing timed out")
+            # On timeout, just return top jobs without filtering
+            return jobs[:15]
+        except Exception as e:
+            logging.error(f"Error in LLM processing: {str(e)}")
+            # On error, just return jobs without filtering
+            return jobs[:15]
+    else:
+        # If LLM processor is not available, return jobs directly
+        return jobs[:15]
 
 async def scrape_with_timeout(scraper, job_request, source_name, timeout=20):
     """Run a scraper with a timeout to prevent hanging"""

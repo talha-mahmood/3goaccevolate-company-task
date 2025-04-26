@@ -139,9 +139,13 @@ class AntiBlockingSession:
             sleep_time = self.min_request_interval - time_since_last + random.uniform(0, 1)
             time.sleep(sleep_time)
         
-        # If kwargs doesn't contain headers, add our default headers
+        # Use our default headers if none provided
         if 'headers' not in kwargs:
-            kwargs['headers'] = self.headers
+            headers = self.headers
+        else:
+            # Merge with our default headers rather than replacing
+            headers = self.headers.copy()
+            headers.update(kwargs.pop('headers'))
         
         # If kwargs doesn't contain proxies, add our proxy
         if 'proxies' not in kwargs and self.proxy:
@@ -151,6 +155,7 @@ class AntiBlockingSession:
             response = self.session.get(
                 url, 
                 params=params,
+                headers=headers,
                 timeout=timeout,
                 **kwargs
             )
@@ -166,14 +171,14 @@ class AntiBlockingSession:
                 self._rotate_proxy()
                 self._refresh_session()
                 
-                # Retry with the new setup
+                # Retry with the new setup - use headers directly to avoid duplicate
                 response = self.session.get(
                     url, 
                     params=params,
-                    headers=self.headers,
+                    headers=headers,
                     proxies=self.proxy,
                     timeout=timeout,
-                    **kwargs
+                    **{k: v for k, v in kwargs.items() if k != 'headers' and k != 'proxies'}
                 )
             
             self.last_request_time = time.time()
